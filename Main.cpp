@@ -1,5 +1,6 @@
 #include <SDL.h>
 #include <SDL_image.h>
+//#include <SDL2_gfxPrimitives.h>
 #include <deque>
 #include <map>
 #include <string>
@@ -11,6 +12,7 @@ const int window[2] = {500,500};
 const int tile_size = 50;
 
 int camera_pos[2] = {0,0};
+int selected_arm = 1;
 
 bool breakk = false;
 SDL_Window* renderwindow;
@@ -38,18 +40,36 @@ SDL_Texture* load_image(std::string s)
     return loaded_textures[s];
 }
 
+class Arm
+{
+public:
+    int hp;
+    bool worn;
+    Arm* carrying;
+
+    Arm()
+    {
+        hp = 10;
+    }
+};
+
 class Object;
-std::deque<Object*> objects;
+std::deque<Object*> objects, enemies;
+Object* player;
 class Object
 {
 public:
-    int pos[2], size[2];
+    int pos[2], size[2], hp;
+    std::deque<Arm*> worn;
+
     SDL_Texture* tex;
 
     Object(int x, int y, std::string s)
     {
         pos[0] = x;
         pos[1] = y;
+
+        hp = 10;
 
         tex = load_image(s);
         SDL_QueryTexture(tex, nullptr, nullptr, &size[0], &size[1]);
@@ -69,12 +89,11 @@ public:
 
     virtual void render()
     {
-        SDL_Rect r={int((pos[0]-camera_pos[0]+0.5)*tile_size), (pos[1]-camera_pos[1])*tile_size, size[0], size[1]};
+        SDL_Rect r={int((pos[0]-camera_pos[0]+0.5)*tile_size), (pos[1]-camera_pos[1]+1)*tile_size-size[1]-5, size[0], size[1]};
 
         SDL_RenderCopy(renderer, tex, nullptr, &r);
     }
 };
-Object* player;
 
 int main(int argc, char* args[])
 {
@@ -96,14 +115,38 @@ int main(int argc, char* args[])
 			else if (e.type == SDL_KEYDOWN)
 			{
 			    if (e.key.keysym.sym == SDLK_ESCAPE) breakk = true;
+			    else if (e.key.keysym.sym == SDLK_1) selected_arm=1;
+			    else if (e.key.keysym.sym == SDLK_2) selected_arm=2;
+			    else if (e.key.keysym.sym == SDLK_3) selected_arm=3;
+			    else if (e.key.keysym.sym == SDLK_4) selected_arm=4;
+			    else if (e.key.keysym.sym == SDLK_5) selected_arm=5;
+			    else if (e.key.keysym.sym == SDLK_6) selected_arm=6;
+			    else
+                {
+                    int di[2] = {0,0};
 
-			    else if (e.key.keysym.sym == SDLK_UP || e.key.keysym.sym == SDLK_w) player->pos[1]--;
-			    else if (e.key.keysym.sym == SDLK_DOWN || e.key.keysym.sym == SDLK_s) player->pos[1]++;
-			    else if (e.key.keysym.sym == SDLK_LEFT || e.key.keysym.sym == SDLK_a) player->pos[0]--;
-			    else if (e.key.keysym.sym == SDLK_RIGHT || e.key.keysym.sym == SDLK_d) player->pos[0]++;
+                    if (e.key.keysym.sym == SDLK_UP || e.key.keysym.sym == SDLK_w) di[1]--;
+                    else if (e.key.keysym.sym == SDLK_DOWN || e.key.keysym.sym == SDLK_s) di[1]++;
+                    else if (e.key.keysym.sym == SDLK_LEFT || e.key.keysym.sym == SDLK_a) di[0]--;
+                    else if (e.key.keysym.sym == SDLK_RIGHT || e.key.keysym.sym == SDLK_d) di[0]++;
+                    else continue;
+
+                    player->pos[0] += di[0];
+                    player->pos[1] += di[1];
+
+                    for (Object* e: enemies)
+                    {
+                        if (e->pos[0] == player->pos[0] && e->pos[1] == player->pos[1])
+                        {
+                            player->pos[0] -= di[0];
+                            player->pos[1] -= di[1];
+                            //attack enemy
+                            continue;
+                        }
+                    }
+                }
 			}
         }
-
         SDL_SetRenderDrawColor(renderer,255,255,255,255);
         SDL_RenderClear(renderer);
 
