@@ -1,6 +1,7 @@
 #include <SDL.h>
 #include <SDL_image.h>
 //#include <SDL2_gfxPrimitives.h>
+#include <iostream>
 #include <deque>
 #include <map>
 #include <string>
@@ -10,9 +11,9 @@
 
 void *__gxx_personality_v0;
 
-const int window[2] = {500,500}, map_size[2] = {50,50};
+const int window[2] = {500,500}, map_size[2] = {60,60};
 const int tile_size = 40;
-const int durability_drop = 2, weapon_durability_drop = 3;
+const int durability_drop = 1, weapon_durability_drop = 2;
 const float weapon_multiplier = 0.8;
 
 int camera_pos[2] = {0,0};
@@ -44,6 +45,11 @@ void random_init()
     random(0,1);
 }
 
+int sign(int i)
+{
+    return i<0?-1:(i>0?1:0);
+}
+
 template<class t> void remove_it(std::deque<t>* base, t thing)
 {
     base->erase( std::remove( std::begin(*base), std::end(*base), thing ), std::end(*base) );
@@ -57,22 +63,37 @@ SDL_Texture* load_image(std::string s)
     return loaded_textures[s];
 }
 
+void death_screen()
+{
+    breakk = true;
+    SDL_SetRenderDrawColor(renderer,255,0,0,255);
+    SDL_RenderClear(renderer);
+    SDL_RenderPresent(renderer);
+}
+
+class Character;
 class Arm
 {
 public:
     int hp, strenght;
-    bool worn;
-    Arm* carrying;
+    Arm *carrying, *carried_by_arm;
+    Character* carried_by_char;
 
-    Arm()
+    Arm(int blood, int attack)
     {
-        hp = 10;
-        strenght=1;
+        hp = blood;
+        strenght=attack;
+
+        carrying = nullptr;
+        carried_by_arm = nullptr;
+        carried_by_char = nullptr;
     }
+
+    void kill();
 };
 
 class Object;
-std::deque<Object*> objects, walls;
+std::deque<Object*> objects, walls, to_delete;
 class Object
 {
 public:
@@ -107,31 +128,129 @@ public:
     }
 };
 
+void wall_or_void(int x, int y)
+{
+    if (x < 0 || x >= map_size[0] || y < 0 || y >= map_size[1]) return true;
+
+    for (Object* o: walls)
+    {
+        if (x == o->pos[0] && y == o->pos[1])
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+class Item: public Object
+{
+
+};
+
+Character* player;
+std::deque<Character*> enemies;
 class Character: public Object
 {
 public:
     int hp;
+    bool enemy;
     std::deque<Arm*> worn;
 
-    Character(int x, int y, std::string s): Object(x,y,s)
+    Character(int x, int y, std::string s, int blood, bool player=false): Object(x,y,s)
     {
-        hp = 10;
+        hp = blood;
+        enemy = !player;
+
+        if (enemy) enemies.push_back(this);
+    }
+
+    ~Character()
+    {
+        if (enemy) remove_it(&enemies, this);
+        else death_screen();
+    }
+
+    void add_arm(Arm* arm)
+    {
+        worn.push_back(arm);
+        arm->carried_by_char=this;
+    }
+
+    void kill()
+    {
+        to_delete.push_back(this);
     }
 
     void attack(Arm* arm)
     {
-        hp -= arm->strenght + (arm->carrying? arm->carrying->strenght*weapon_multiplier:0);
-        arm->hp -= durability_drop;
-        if (arm->carrying) arm->carrying->hp -= weapon_durability_drop;
+        if (arm)
+        {
+            hp -= arm->strenght + (arm->carrying? arm->carrying->strenght*weapon_multiplier:0);
+            if (hp <= 0) kill();
+
+            if (arm->carrying)
+            {
+                arm->carrying->hp -= weapon_durability_drop;
+                if (arm->carrying->hp <= 0) arm->carrying->kill();
+            }
+
+            arm->hp -= durability_drop;
+            if (arm->hp <= 0) arm->kill();
+        }
     }
 
     virtual void ai()
     {
-        //...
+        int last_pos[2] = {pos[0],pos[1]};
+
+        if (abs(player->pos[0]-pos[0]) >= abs(player->pos[1]-pos[1])) pos[0] += sign(player->pos[0]-pos[0]);
+        else pos[1] += sign(player->pos[1]-pos[1]);
+
+        if (wall_or_void(pos[0],pos[1]))
+        {
+            pos[0] = last_pos[0];
+            pos[1] = last_pos[1];
+        }
+
+        for (Object* o: enemies)
+        {
+            if (pos[0] == o->pos[0] && pos[1] == o->pos[1] && o!=this)
+            {
+                pos[0] = last_pos[0];
+                pos[1] = last_pos[1];
+            }
+        }
+
+        if (pos[0] == player->pos[0] && pos[1] == player->pos[1])
+        {
+            pos[0] = last_pos[0];
+            pos[1] = last_pos[1];
+
+            player->attack(worn[0]);
+        }
     }
 };
-Character* player;
-std::deque<Character*> enemies;
+
+void Arm::kill()
+{
+    if (carried_by_arm) carried_by_arm->carrying=nullptr;
+    if (carried_by_char)
+    {
+        remove_it(&carried_by_char->worn, this);
+        if (carrying) carried_by_char->worn.push_back(carrying);
+    }
+
+    delete this;
+}
+
+struct Enemy_type
+{
+    int arms, blood, blood_per_arm, strenght_per_arm;
+    int number, min_radius, max_radius;
+    std::string tex;
+};
+std::deque<Enemy_type*> enemy_types;
 
 void generate_level(int tiles_to_generate)
 {
@@ -173,8 +292,8 @@ void generate_level(int tiles_to_generate)
         {
             do
             {
-                walker_pos[0] = random(0,map_size[0]);
-                walker_pos[1] = random(0,map_size[1]);
+                walker_pos[0] = random(0,map_size[0]-1);
+                walker_pos[1] = random(0,map_size[1]-1);
             } while (!free_tiles[walker_pos[0]][walker_pos[1]]);
         }
     }
@@ -191,6 +310,29 @@ void generate_level(int tiles_to_generate)
             }
         }
     }
+
+    for (Enemy_type* e: enemy_types)
+    {
+        for (int u=1;u<=e->number;u++)
+        {
+            int pos[2], counter=0;
+            do
+            {
+                pos[0] = map_size[0]/2+(random(0,1)?1:-1)*random(e->min_radius,e->max_radius);
+                pos[1] = map_size[1]/2+(random(0,1)?1:-1)*random(e->min_radius,e->max_radius);
+                counter++;
+                if (counter>=3000) return generate_level(tiles_to_generate);
+            } while (!free_tiles[pos[0]][pos[1]]);
+
+            Character* c = new Character(pos[0],pos[1],e->tex,e->blood);
+            free_tiles[pos[0]][pos[1]] = false;
+
+            for (int i=1;i<=e->arms;i++)
+            {
+                c->add_arm(new Arm(e->blood_per_arm,e->strenght_per_arm));
+            }
+        }
+    }
 }
 
 void set_camera()
@@ -201,13 +343,17 @@ void set_camera()
 
 int main(int argc, char* args[])
 {
+    random_init();
     IMG_Init(IMG_INIT_PNG);
 
     renderwindow = SDL_CreateWindow("LD 38", 50, 50, window[0], window[1], SDL_WINDOW_SHOWN);
     renderer = SDL_CreateRenderer(renderwindow, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
 
-    generate_level(1000);
-    player = new Character(map_size[0]/2,map_size[1]/2,"Player");
+    #include "Enemy_types.cpp"
+
+    generate_level(1609);
+    player = new Character(map_size[0]/2,map_size[1]/2,"Player",50,true);
+    player->add_arm(new Arm(5,5));
 
     set_camera();
 
@@ -241,22 +387,8 @@ int main(int argc, char* args[])
                     player->pos[0] += di[0];
                     player->pos[1] += di[1];
 
-                    bool possible_move = true;
 
-                    if (player->pos[0] < 0 || player->pos[0] >= map_size[0] || player->pos[1] < 0 || player->pos[1] >= map_size[1]) possible_move = false;
-                    else
-                    {
-                        for (Object* e: walls)
-                        {
-                            if (e->pos[0] == player->pos[0] && e->pos[1] == player->pos[1])
-                            {
-                                possible_move = false;
-                                break;
-                            }
-                        }
-                    }
-
-                    if (!possible_move)
+                    if (wall_or_void(player->pos[0],player->pos[1]))
                     {
                         player->pos[0] -= di[0];
                         player->pos[1] -= di[1];
@@ -274,6 +406,12 @@ int main(int argc, char* args[])
                         }
                     }
 
+                    while(!to_delete.empty())
+                    {
+                        delete to_delete[0];
+                        to_delete.pop_front();
+                    }
+
                     for (Character* e: enemies)
                     {
                         e->ai();
@@ -284,6 +422,8 @@ int main(int argc, char* args[])
 			}
         }
 
+        if (breakk) break;
+
         SDL_SetRenderDrawColor(renderer,255,255,255,255);
         SDL_RenderClear(renderer);
 
@@ -292,6 +432,23 @@ int main(int argc, char* args[])
             o->update();
             o->render();
         }
+
+        SDL_Rect r = {window[0]-20,window[1]-10,10,100*player->hp/50};
+        r.y -= r.h;
+        SDL_SetRenderDrawColor(renderer,255,0,0,255);
+        SDL_RenderFillRect(renderer,&r);
+        r.y += r.h;
+        r.h = 100;
+        r.y -= r.h;
+        SDL_SetRenderDrawColor(renderer,0,0,0,255);
+        SDL_RenderDrawRect(renderer,&r);
+
+        while(!to_delete.empty())
+        {
+            delete to_delete[0];
+            to_delete.pop_front();
+        }
+
 
         SDL_RenderPresent(renderer);
         limit_fps();
