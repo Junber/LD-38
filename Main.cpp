@@ -17,7 +17,7 @@ const int durability_drop = 1, weapon_durability_drop = 2;
 const float weapon_multiplier = 0.8;
 
 int camera_pos[2] = {0,0};
-int selected_arm = 1;
+int selected_arm = 0;
 
 bool breakk = false;
 SDL_Window* renderwindow;
@@ -477,13 +477,29 @@ int main(int argc, char* args[])
 			{
 			    int select = 0;
 			    if (e.key.keysym.sym == SDLK_ESCAPE) breakk = true;
-			    else if (e.key.keysym.sym == SDLK_1) select=1;
-			    else if (e.key.keysym.sym == SDLK_2) select=2;
-			    else if (e.key.keysym.sym == SDLK_3) select=3;
-			    else if (e.key.keysym.sym == SDLK_4) select=4;
-			    else if (e.key.keysym.sym == SDLK_5) select=5;
-			    else if (e.key.keysym.sym == SDLK_6) select=6;
+			    else if (e.key.keysym.sym == SDLK_1) select=0;
+			    else if (e.key.keysym.sym == SDLK_2) select=1;
+			    else if (e.key.keysym.sym == SDLK_3) select=2;
+			    else if (e.key.keysym.sym == SDLK_4) select=3;
+			    else if (e.key.keysym.sym == SDLK_5) select=4;
+			    else if (e.key.keysym.sym == SDLK_6) select=5;
 			    else if (e.key.keysym.sym == SDLK_f) select_mode = (select_mode==equip?normal:equip); //equip
+			    else if (e.key.keysym.sym == SDLK_q) //eat
+                {
+                    if (player->worn[selected_arm])
+                    {
+                        if (player->worn[selected_arm]->carrying)
+                        {
+                            player->hp += player->worn[selected_arm]->carrying->hp;
+                            player->worn[selected_arm]->carrying->kill();
+                        }
+                        else
+                        {
+                            player->hp += player->worn[selected_arm]->hp;
+                            player->worn[selected_arm]->kill();
+                        }
+                    }
+                }
                 else if (e.key.keysym.sym == SDLK_c) //switch
                 {
                     Arm* temp = player->worn[selected_arm];
@@ -497,7 +513,7 @@ int main(int argc, char* args[])
                     player->worn[selected_arm]->carrying->carried_by_arm = player->worn[selected_arm];
                     player->worn[selected_arm]->carrying->carried_by_char = nullptr;
                 }
-			    else
+			    else //movement & shit
                 {
                     int di[2] = {0,0};
 
@@ -524,7 +540,7 @@ int main(int argc, char* args[])
                         {
                             player->pos[0] -= di[0];
                             player->pos[1] -= di[1];
-                            e->attack(player->worn[selected_arm-1]);
+                            e->attack(player->worn[selected_arm]);
                             break;
                         }
                     }
