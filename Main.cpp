@@ -177,6 +177,12 @@ void generate_level(int tiles_to_generate)
     }
 }
 
+void set_camera()
+{
+    camera_pos[0] = player->pos[0]-window[0]/(tile_size*2);
+    camera_pos[1] = player->pos[1]-window[1]/(tile_size*2);
+}
+
 int main(int argc, char* args[])
 {
     IMG_Init(IMG_INIT_PNG);
@@ -186,6 +192,8 @@ int main(int argc, char* args[])
 
     generate_level(100);
     player = new Character(map_size[0]/2,map_size[1]/2,"Player");
+
+    set_camera();
 
     //SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_BLEND);
     SDL_Event e;
@@ -219,12 +227,16 @@ int main(int argc, char* args[])
 
                     bool possible_move = true;
 
-                    for (Object* e: walls)
+                    if (player->pos[0] < 0 || player->pos[0] >= map_size[0] || player->pos[1] < 0 || player->pos[1] >= map_size[1]) possible_move = false;
+                    else
                     {
-                        if (e->pos[0] == player->pos[0] && e->pos[1] == player->pos[1])
+                        for (Object* e: walls)
                         {
-                            possible_move = false;
-                            break;
+                            if (e->pos[0] == player->pos[0] && e->pos[1] == player->pos[1])
+                            {
+                                possible_move = false;
+                                break;
+                            }
                         }
                     }
 
@@ -251,8 +263,7 @@ int main(int argc, char* args[])
                         e->ai();
                     }
 
-                    camera_pos[0] = player->pos[0]-window[0]/(tile_size*2);
-                    camera_pos[1] = player->pos[1]-window[1]/(tile_size*2);
+                    set_camera();
                 }
 			}
         }
