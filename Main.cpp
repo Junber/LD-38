@@ -11,7 +11,7 @@
 
 void *__gxx_personality_v0;
 
-const int window[2] = {500,500}, map_size[2] = {60,60};
+const int window[2] = {500,500}, map_size[2] = {64,64};
 const int tile_size = 40;
 const int durability_drop = 1, weapon_durability_drop = 2;
 const float weapon_multiplier = 0.8;
@@ -22,6 +22,11 @@ int selected_arm = 1;
 bool breakk = false;
 SDL_Window* renderwindow;
 SDL_Renderer* renderer;
+
+enum
+{
+    normal,equip
+}select_mode;
 
 int last_time;
 float wait;
@@ -76,13 +81,15 @@ class Arm
 {
 public:
     int hp, strenght;
+    std::string name;
     Arm *carrying, *carried_by_arm;
     Character* carried_by_char;
 
-    Arm(int blood, int attack)
+    Arm(int blood, int attack, std::string namee)
     {
         hp = blood;
         strenght=attack;
+        name = namee;
 
         carrying = nullptr;
         carried_by_arm = nullptr;
@@ -98,12 +105,14 @@ class Object
 {
 public:
     int pos[2], size[2];
+    bool background;
     SDL_Texture* tex;
 
-    Object(int x, int y, std::string s)
+    Object(int x, int y, std::string s, bool bg=false)
     {
         pos[0] = x;
         pos[1] = y;
+        background = bg;
         tex = load_image(s);
         SDL_QueryTexture(tex, nullptr, nullptr, &size[0], &size[1]);
 
@@ -126,9 +135,14 @@ public:
 
         SDL_RenderCopy(renderer, tex, nullptr, &r);
     }
+
+    virtual void kill()
+    {
+        to_delete.push_back(this);
+    }
 };
 
-void wall_or_void(int x, int y)
+bool wall_or_void(int x, int y)
 {
     if (x < 0 || x >= map_size[0] || y < 0 || y >= map_size[1]) return true;
 
@@ -143,9 +157,23 @@ void wall_or_void(int x, int y)
     return false;
 }
 
+class Item;
+std::deque<Item*> items;
 class Item: public Object
 {
+public:
+    Arm* arm;
 
+    Item(int x, int y, Arm* a) : Object(x,y,a->name,true)
+    {
+        arm = a;
+        items.push_back(this);
+    }
+
+    ~Item()
+    {
+        remove_it(&items,this);
+    }
 };
 
 Character* player;
@@ -155,12 +183,14 @@ class Character: public Object
 public:
     int hp;
     bool enemy;
-    std::deque<Arm*> worn;
+    Arm* worn[6];
 
     Character(int x, int y, std::string s, int blood, bool player=false): Object(x,y,s)
     {
         hp = blood;
         enemy = !player;
+
+        for (int i=0;i<6;i++) worn[i] = nullptr;
 
         if (enemy) enemies.push_back(this);
     }
@@ -171,14 +201,78 @@ public:
         else death_screen();
     }
 
-    void add_arm(Arm* arm)
+    bool add_arm(Arm* arm)
     {
-        worn.push_back(arm);
-        arm->carried_by_char=this;
+        for (int i=0;i<6;i++)
+        {
+            if (!worn[i])
+            {
+                worn[i] = arm;
+                arm->carried_by_char=this;
+                return true;
+            }
+        }
+        for (int i=0;i<6;i++)
+        {
+            if (!worn[i]->carrying)
+            {
+                worn[i]->carrying = arm;
+                arm->carried_by_arm=worn[i];
+                return true;
+            }
+        }
+        return false;
     }
 
     void kill()
     {
+        std::deque<Arm*> to_scatter;
+        for (int i=0;i<5;i++)
+        {
+            if (worn[i])
+            {
+                to_scatter.push_back(worn[i]);
+                worn[i]->carried_by_char=nullptr;
+
+                if (worn[i]->carrying)
+                {
+                    to_scatter.push_back(worn[i]->carrying);
+                    worn[i]->carrying->carried_by_arm=nullptr;
+                    worn[i]->carrying = nullptr;
+                }
+            }
+        }
+
+        int dist = 0;
+        while (!to_scatter.empty())
+        {
+            for (int i=-dist;i<=dist;i++)
+            {
+                for (int u=-dist;u<=dist;u++)
+                {
+                    if (!wall_or_void(pos[0]+i,pos[1]+u))
+                    {
+                        bool found_item = false;
+                        for (Item* it: items)
+                        {
+                            if (it->pos[0] == i && it->pos[1] == u)
+                            {
+                                found_item = true;
+                                break;
+                            }
+                        }
+                        if (found_item) continue;
+
+                        new Item(pos[0]+i,pos[1]+u,to_scatter[0]);
+                        to_scatter.pop_front();
+                    }
+                    if (to_scatter.empty()) break;
+                }
+                if (to_scatter.empty()) break;
+            }
+            dist++;
+        }
+
         to_delete.push_back(this);
     }
 
@@ -237,8 +331,14 @@ void Arm::kill()
     if (carried_by_arm) carried_by_arm->carrying=nullptr;
     if (carried_by_char)
     {
-        remove_it(&carried_by_char->worn, this);
-        if (carrying) carried_by_char->worn.push_back(carrying);
+        for (int i=0;i<6;i++)
+        {
+            if (carried_by_char->worn[i] == this)
+            {
+                carried_by_char->worn[i] = nullptr;
+                if (carrying) carried_by_char->worn[i] = carrying;
+            }
+        }
     }
 
     delete this;
@@ -248,7 +348,7 @@ struct Enemy_type
 {
     int arms, blood, blood_per_arm, strenght_per_arm;
     int number, min_radius, max_radius;
-    std::string tex;
+    std::string tex, arm_name;
 };
 std::deque<Enemy_type*> enemy_types;
 
@@ -288,7 +388,7 @@ void generate_level(int tiles_to_generate)
         else if (walker_pos[0] >= map_size[0]) walker_pos[0] = map_size[0];
         if (walker_pos[1] < 0) walker_pos[1] = 0;
         else if (walker_pos[1] >= map_size[1]) walker_pos[1] = map_size[1];*/
-        if (walker_pos[0] < 0 || walker_pos[0] >= map_size[0] || walker_pos[1] < 0 || walker_pos[1] >= map_size[1])
+        if (walker_pos[0] < 1 || walker_pos[0] >= map_size[0]-1 || walker_pos[1] < 1 || walker_pos[1] >= map_size[1]-1)
         {
             do
             {
@@ -327,9 +427,12 @@ void generate_level(int tiles_to_generate)
             Character* c = new Character(pos[0],pos[1],e->tex,e->blood);
             free_tiles[pos[0]][pos[1]] = false;
 
-            for (int i=1;i<=e->arms;i++)
+            if (e->arms)
             {
-                c->add_arm(new Arm(e->blood_per_arm,e->strenght_per_arm));
+                for (int i=1;i<=e->arms;i++)
+                {
+                    c->add_arm(new Arm(e->blood_per_arm,e->strenght_per_arm,e->arm_name));
+                }
             }
         }
     }
@@ -339,6 +442,11 @@ void set_camera()
 {
     camera_pos[0] = player->pos[0]-window[0]/(tile_size*2);
     camera_pos[1] = player->pos[1]-window[1]/(tile_size*2);
+}
+
+bool sort_crit(Object* a, Object* b)
+{
+    return a->background || (!b->background && a->pos[1] < b->pos[1]);
 }
 
 int main(int argc, char* args[])
@@ -353,7 +461,7 @@ int main(int argc, char* args[])
 
     generate_level(1609);
     player = new Character(map_size[0]/2,map_size[1]/2,"Player",50,true);
-    player->add_arm(new Arm(5,5));
+    player->add_arm(new Arm(5,5,"Normal Arm"));
 
     set_camera();
 
@@ -367,13 +475,28 @@ int main(int argc, char* args[])
 
 			else if (e.type == SDL_KEYDOWN)
 			{
+			    int select = 0;
 			    if (e.key.keysym.sym == SDLK_ESCAPE) breakk = true;
-			    else if (e.key.keysym.sym == SDLK_1) selected_arm=1;
-			    else if (e.key.keysym.sym == SDLK_2) selected_arm=2;
-			    else if (e.key.keysym.sym == SDLK_3) selected_arm=3;
-			    else if (e.key.keysym.sym == SDLK_4) selected_arm=4;
-			    else if (e.key.keysym.sym == SDLK_5) selected_arm=5;
-			    else if (e.key.keysym.sym == SDLK_6) selected_arm=6;
+			    else if (e.key.keysym.sym == SDLK_1) select=1;
+			    else if (e.key.keysym.sym == SDLK_2) select=2;
+			    else if (e.key.keysym.sym == SDLK_3) select=3;
+			    else if (e.key.keysym.sym == SDLK_4) select=4;
+			    else if (e.key.keysym.sym == SDLK_5) select=5;
+			    else if (e.key.keysym.sym == SDLK_6) select=6;
+			    else if (e.key.keysym.sym == SDLK_f) select_mode = (select_mode==equip?normal:equip); //equip
+                else if (e.key.keysym.sym == SDLK_c) //switch
+                {
+                    Arm* temp = player->worn[selected_arm];
+                    player->worn[selected_arm] = player->worn[selected_arm]->carrying;
+                    player->worn[selected_arm]->carrying = temp;
+                    player->worn[selected_arm]->carrying->carrying = nullptr;
+
+                    player->worn[selected_arm]->carried_by_arm = nullptr;
+                    player->worn[selected_arm]->carried_by_char = player;
+
+                    player->worn[selected_arm]->carrying->carried_by_arm = player->worn[selected_arm];
+                    player->worn[selected_arm]->carrying->carried_by_char = nullptr;
+                }
 			    else
                 {
                     int di[2] = {0,0};
@@ -406,6 +529,18 @@ int main(int argc, char* args[])
                         }
                     }
 
+                    for (Item* it: items)
+                    {
+                        if (it->pos[0] == player->pos[0] && it->pos[1] == player->pos[1])
+                        {
+                            if (player->add_arm(it->arm))
+                            {
+                                it->arm = nullptr;
+                                it->kill();
+                            }
+                        }
+                    }
+
                     while(!to_delete.empty())
                     {
                         delete to_delete[0];
@@ -418,6 +553,73 @@ int main(int argc, char* args[])
                     }
 
                     set_camera();
+
+                    select_mode = normal;
+                }
+
+                if (select)
+                {
+                    if (select_mode == normal) selected_arm = select;
+                    else if (select_mode == equip && select != selected_arm)
+                    {
+                        //Swapping itself
+                        if (player->worn[select])
+                        {
+                            Arm* temp = player->worn[select]->carrying;
+
+                            if (player->worn[selected_arm]->carrying)
+                            {
+                                player->worn[select]->carrying = player->worn[selected_arm]->carrying;
+                                player->worn[selected_arm]->carrying = temp;
+                            }
+                            else
+                            {
+                                player->worn[select]->carrying = player->worn[selected_arm];
+                                player->worn[selected_arm] = temp;
+                            }
+                        }
+                        else
+                        {
+                            Arm* temp = player->worn[select];
+
+                            if (player->worn[selected_arm]->carrying)
+                            {
+                                player->worn[select] = player->worn[selected_arm]->carrying;
+                                player->worn[selected_arm]->carrying = temp;
+                            }
+                            else
+                            {
+                                player->worn[select] = player->worn[selected_arm];
+                                player->worn[selected_arm] = temp;
+                            }
+                        }
+
+                        //correcting backwards references
+                        if (player->worn[select])
+                        {
+                            player->worn[select]->carrying->carried_by_arm = nullptr;
+                            player->worn[select]->carrying->carried_by_char = player;
+
+                            if (player->worn[select]->carrying)
+                            {
+                                player->worn[select]->carrying->carried_by_arm = player->worn[select];
+                                player->worn[select]->carrying->carried_by_char = nullptr;
+                                player->worn[select]->carrying->carrying = nullptr;
+                            }
+                        }
+                        if (player->worn[selected_arm])
+                        {
+                            player->worn[selected_arm]->carrying->carried_by_arm = nullptr;
+                            player->worn[selected_arm]->carrying->carried_by_char = player;
+
+                            if (player->worn[selected_arm]->carrying)
+                            {
+                                player->worn[selected_arm]->carrying->carried_by_arm = player->worn[selected_arm];
+                                player->worn[selected_arm]->carrying->carried_by_char = nullptr;
+                                player->worn[selected_arm]->carrying->carrying = nullptr;
+                            }
+                        }
+                    }
                 }
 			}
         }
@@ -427,6 +629,7 @@ int main(int argc, char* args[])
         SDL_SetRenderDrawColor(renderer,255,255,255,255);
         SDL_RenderClear(renderer);
 
+        std::sort(objects.begin(), objects.end(), sort_crit);
         for (Object* o: objects)
         {
             o->update();

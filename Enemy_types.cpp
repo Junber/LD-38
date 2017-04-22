@@ -10,6 +10,7 @@
     e->number = 3;
     e->min_radius = 1;
     e->max_radius = 10;
+    e->arm_name = "";
 
     enemy_types.push_back(e);
 }
@@ -24,6 +25,7 @@
     e->number = 1;
     e->min_radius = 1;
     e->max_radius = 10;
+    e->arm_name = "Normal Arm";
 
     enemy_types.push_back(e);
 }
@@ -39,6 +41,7 @@
     e->number = 5;
     e->min_radius = 11;
     e->max_radius = 20;
+    e->arm_name = "";
 
     enemy_types.push_back(e);
 }
@@ -53,6 +56,7 @@
     e->number = 3;
     e->min_radius = 11;
     e->max_radius = 20;
+    e->arm_name = "Normal Arm";
 
     enemy_types.push_back(e);
 }
@@ -67,6 +71,7 @@
     e->number = 3;
     e->min_radius = 11;
     e->max_radius = 20;
+    e->arm_name = "Weak Arm";
 
     enemy_types.push_back(e);
 }
@@ -83,6 +88,7 @@
     e->number = 5;
     e->min_radius = 21;
     e->max_radius = 30;
+    e->arm_name = "Soldiers Arm";
 
     enemy_types.push_back(e);
 }
@@ -97,6 +103,7 @@
     e->number = 3;
     e->min_radius = 21;
     e->max_radius = 30;
+    e->arm_name = "Weak Arm";
 
     enemy_types.push_back(e);
 }
