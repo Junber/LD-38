@@ -484,6 +484,53 @@ int main(int argc, char* args[])
 			    else if (e.key.keysym.sym == SDLK_5) select=4;
 			    else if (e.key.keysym.sym == SDLK_6) select=5;
 			    else if (e.key.keysym.sym == SDLK_f) select_mode = (select_mode==equip?normal:equip); //equip
+			    else if (e.key.keysym.sym == SDLK_x) //drop
+                {
+                    if (player->worn[selected_arm])
+                    {
+                        Arm* a;
+                        if (player->worn[selected_arm]->carrying)
+                        {
+                            a = player->worn[selected_arm]->carrying;
+                            player->worn[selected_arm]->carrying = nullptr;
+                        }
+                        else
+                        {
+                            a = player->worn[selected_arm];
+                            player->worn[selected_arm] = nullptr;
+                        }
+
+                        int dist = 0;
+                        while (a)
+                        {
+                            for (int i=-dist;i<=dist;i++)
+                            {
+                                for (int u=-dist;u<=dist;u++)
+                                {
+                                    if (!wall_or_void(player->pos[0]+i,player->pos[1]+u))
+                                    {
+                                        bool found_item = false;
+                                        for (Item* it: items)
+                                        {
+                                            if (it->pos[0] == i && it->pos[1] == u)
+                                            {
+                                                found_item = true;
+                                                break;
+                                            }
+                                        }
+                                        if (found_item) continue;
+
+                                        new Item(player->pos[0]+i,player->pos[1]+u, a);
+                                        a = nullptr;
+                                        break;
+                                    }
+                                }
+                                if (!a) break;
+                            }
+                            dist++;
+                        }
+                    }
+                }
 			    else if (e.key.keysym.sym == SDLK_q) //eat
                 {
                     if (player->worn[selected_arm])
@@ -499,6 +546,10 @@ int main(int argc, char* args[])
                             player->worn[selected_arm]->kill();
                         }
                     }
+
+                    for (Character* e: enemies) e->ai();
+                    set_camera();
+                    select_mode = normal;
                 }
                 else if (e.key.keysym.sym == SDLK_c) //switch
                 {
@@ -563,13 +614,8 @@ int main(int argc, char* args[])
                         to_delete.pop_front();
                     }
 
-                    for (Character* e: enemies)
-                    {
-                        e->ai();
-                    }
-
+                    for (Character* e: enemies) e->ai();
                     set_camera();
-
                     select_mode = normal;
                 }
 
