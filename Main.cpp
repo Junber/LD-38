@@ -143,6 +143,14 @@ void generate_level(int tiles_to_generate)
 
     bool free_tiles[map_size[0]][map_size[1]];
 
+    for (int i=0; i<map_size[0]; i++)
+    {
+        for (int u=0; u<map_size[1]; u++)
+        {
+            free_tiles[i][u] = false;
+        }
+    }
+
     int walker_pos[2] = {map_size[0]/2,map_size[1]/2};
     int tiles=0;
 
@@ -157,10 +165,18 @@ void generate_level(int tiles_to_generate)
         walker_pos[0] += (r==0)?-1:((r==1)?1:0);
         walker_pos[1] += (r==2)?-1:((r==3)?1:0);
 
-        if (walker_pos[0] < 0) walker_pos[0] = 0;
+        /*if (walker_pos[0] < 0) walker_pos[0] = 0;
         else if (walker_pos[0] >= map_size[0]) walker_pos[0] = map_size[0];
         if (walker_pos[1] < 0) walker_pos[1] = 0;
-        else if (walker_pos[1] >= map_size[1]) walker_pos[1] = map_size[1];
+        else if (walker_pos[1] >= map_size[1]) walker_pos[1] = map_size[1];*/
+        if (walker_pos[0] < 0 || walker_pos[0] >= map_size[0] || walker_pos[1] < 0 || walker_pos[1] >= map_size[1])
+        {
+            do
+            {
+                walker_pos[0] = random(0,map_size[0]);
+                walker_pos[1] = random(0,map_size[1]);
+            } while (!free_tiles[walker_pos[0]][walker_pos[1]]);
+        }
     }
 
     for (int i=0; i<map_size[0]; i++)
@@ -190,7 +206,7 @@ int main(int argc, char* args[])
     renderwindow = SDL_CreateWindow("LD 38", 50, 50, window[0], window[1], SDL_WINDOW_SHOWN);
     renderer = SDL_CreateRenderer(renderwindow, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
 
-    generate_level(100);
+    generate_level(1000);
     player = new Character(map_size[0]/2,map_size[1]/2,"Player");
 
     set_camera();

@@ -82,3 +82,4 @@ $RECYCLE.BIN/
 # IDE files
 *.cbp
 *.layout
+*.depend
