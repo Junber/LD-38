@@ -14,6 +14,7 @@
     e->explosion_radius = 7;
 
     enemy_types.push_back(e);
+    start_monster = e;
 }
 {
     Enemy_type* e = new Enemy_type;

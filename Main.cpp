@@ -11,12 +11,13 @@
 
 void *__gxx_personality_v0;
 
-const int window[2] = {500,500}, map_size[2] = {64,64};
+const int window[2] = {500,500}, map_size = 64;
 const int tile_size = 40;
 const int durability_drop = 1, weapon_durability_drop = 2, throw_durability_drop = 2, kick_damage=2, bomb_explode_time=4, bomb_explosion_radius=5;
 const float weapon_multiplier = 0.8;
 
 int camera_pos[2] = {0,0};
+int darkness[map_size][map_size];
 int selected_arm = 0;
 
 bool breakk = false;
@@ -153,7 +154,7 @@ public:
 
 bool wall_or_void(int x, int y)
 {
-    if (x < 0 || x >= map_size[0] || y < 0 || y >= map_size[1]) return true;
+    if (x < 0 || x >= map_size || y < 0 || y >= map_size || darkness[x][y]) return true;
 
     for (Object* o: walls)
     {
@@ -177,6 +178,8 @@ public:
         arm = a;
         items.push_back(this);
 
+        lifetime = 0;
+
         arm->carried_by_arm = nullptr;
         arm->carried_by_char = nullptr;
     }
@@ -192,7 +195,7 @@ public:
 std::pair<int,int> place_item(int pos_x, int pos_y, Item* this_item=nullptr)
 {
     int dist = 0;
-    while (dist <= map_size[0])
+    while (dist <= map_size)
     {
         for (int i=pos_x-dist;i<=pos_x+dist;i++)
         {
@@ -335,10 +338,11 @@ void explosion(int x, int y, bool bomb, int range=bomb_explosion_radius)
         {
             if (i*i+u*u<=radius_square)
             {
+                int pos[2] = {x+i, y+u};
+                darkness[pos[0]][pos[1]] = false;
+
                 if (bomb)
                 {
-                    int pos[2] = {x+i, y+u};
-
                     for (Character* e: enemies)
                     {
                         if (e->pos[0] == pos[0] && e->pos[1] == pos[1]) e->attack(explosion_arm);
@@ -432,6 +436,7 @@ struct Enemy_type
     std::string tex, arm_name;
 };
 std::deque<Enemy_type*> enemy_types;
+Enemy_type* start_monster;
 
 void generate_level(int tiles_to_generate)
 {
@@ -441,23 +446,31 @@ void generate_level(int tiles_to_generate)
         walls.pop_front();
     }
 
-    bool free_tiles[map_size[0]][map_size[1]];
+    bool free_tiles[map_size][map_size];
 
-    for (int i=0; i<map_size[0]; i++)
+    for (int i=0; i<map_size; i++)
     {
-        for (int u=0; u<map_size[1]; u++)
+        for (int u=0; u<map_size; u++)
         {
             free_tiles[i][u] = false;
+            darkness[i][u] = true;
         }
     }
 
-    int walker_pos[2] = {map_size[0]/2,map_size[1]/2};
+    int walker_pos[2] = {map_size/2,map_size/2}, start_monster_pos[2] = {map_size/2,map_size/2};
     int tiles=0;
 
     while (tiles < tiles_to_generate)
     {
         if (!free_tiles[walker_pos[0]][walker_pos[1]])
         {
+            if (tiles < 3) darkness[walker_pos[0]][walker_pos[1]] = false;
+            if (tiles == 2)
+            {
+                start_monster_pos[0] = walker_pos[0];
+                start_monster_pos[1] = walker_pos[1];
+            }
+
             free_tiles[walker_pos[0]][walker_pos[1]] = true;
             tiles++;
         }
@@ -466,22 +479,22 @@ void generate_level(int tiles_to_generate)
         walker_pos[1] += (r==2)?-1:((r==3)?1:0);
 
         /*if (walker_pos[0] < 0) walker_pos[0] = 0;
-        else if (walker_pos[0] >= map_size[0]) walker_pos[0] = map_size[0];
+        else if (walker_pos[0] >= map_size) walker_pos[0] = map_size;
         if (walker_pos[1] < 0) walker_pos[1] = 0;
-        else if (walker_pos[1] >= map_size[1]) walker_pos[1] = map_size[1];*/
-        if (walker_pos[0] < 1 || walker_pos[0] >= map_size[0]-1 || walker_pos[1] < 1 || walker_pos[1] >= map_size[1]-1)
+        else if (walker_pos[1] >= map_size) walker_pos[1] = map_size;*/
+        if (walker_pos[0] < 1 || walker_pos[0] >= map_size-1 || walker_pos[1] < 1 || walker_pos[1] >= map_size-1)
         {
             do
             {
-                walker_pos[0] = random(0,map_size[0]-1);
-                walker_pos[1] = random(0,map_size[1]-1);
+                walker_pos[0] = random(0,map_size-1);
+                walker_pos[1] = random(0,map_size-1);
             } while (!free_tiles[walker_pos[0]][walker_pos[1]]);
         }
     }
 
-    for (int i=0; i<map_size[0]; i++)
+    for (int i=0; i<map_size; i++)
     {
-        for (int u=0; u<map_size[1]; u++)
+        for (int u=0; u<map_size; u++)
         {
             if (!free_tiles[i][u])
             {
@@ -492,6 +505,16 @@ void generate_level(int tiles_to_generate)
         }
     }
 
+    Character* c = new Character(start_monster_pos[0],start_monster_pos[1],start_monster->tex,start_monster->blood,start_monster->explosion_radius);
+    free_tiles[start_monster_pos[0]][start_monster_pos[1]] = false;
+    if (start_monster->arms)
+    {
+        for (int i=1;i<=start_monster->arms;i++)
+        {
+            c->add_arm(new Arm(start_monster->blood_per_arm,start_monster->strenght_per_arm,start_monster->arm_name));
+        }
+    }
+
     for (Enemy_type* e: enemy_types)
     {
         for (int u=1;u<=e->number;u++)
@@ -499,8 +522,8 @@ void generate_level(int tiles_to_generate)
             int pos[2], counter=0;
             do
             {
-                pos[0] = map_size[0]/2+(random(0,1)?1:-1)*random(e->min_radius,e->max_radius);
-                pos[1] = map_size[1]/2+(random(0,1)?1:-1)*random(e->min_radius,e->max_radius);
+                pos[0] = map_size/2+(random(0,1)?1:-1)*random(e->min_radius,e->max_radius);
+                pos[1] = map_size/2+(random(0,1)?1:-1)*random(e->min_radius,e->max_radius);
                 counter++;
                 if (counter>=3000) return generate_level(tiles_to_generate);
             } while (!free_tiles[pos[0]][pos[1]]);
@@ -548,6 +571,19 @@ void render_everything()
     SDL_SetRenderDrawColor(renderer,0,0,0,255);
     SDL_RenderDrawRect(renderer,&r);
 
+    for (int i=0;i<=window[0]/tile_size+1;i++)
+    {
+        for (int u=0;u<=window[1]/tile_size+1;u++)
+        {
+            if (camera_pos[0]+i < 0 || camera_pos[0]+i >= map_size || camera_pos[1]+u < 0 || camera_pos[1]+u >= map_size
+                || darkness[camera_pos[0]+i][camera_pos[1]+u])
+            {
+                SDL_Rect r = {i*tile_size,u*tile_size,tile_size,tile_size};
+                SDL_RenderFillRect(renderer,&r);
+            }
+        }
+    }
+
     SDL_RenderPresent(renderer);
 }
 
@@ -570,7 +606,7 @@ int main(int argc, char* args[])
     #include "Enemy_types.cpp"
 
     generate_level(1609);
-    player = new Character(map_size[0]/2,map_size[1]/2,"Player",50,5,true);
+    player = new Character(map_size/2,map_size/2,"Player",50,5,true);
     player->add_arm(new Arm(5,5,"Normal Arm"));
 
     set_camera();
@@ -619,12 +655,12 @@ int main(int argc, char* args[])
                         auto pos_i = place_item(player->pos[0],player->pos[1]);
                         if (player->worn[selected_arm]->carrying)
                         {
-                            Item(pos_i.first, pos_i.second, player->worn[selected_arm]->carrying);
+                            new Item(pos_i.first, pos_i.second, player->worn[selected_arm]->carrying);
                             player->worn[selected_arm]->carrying = nullptr;
                         }
                         else
                         {
-                            Item(pos_i.first, pos_i.second, player->worn[selected_arm]);
+                            new Item(pos_i.first, pos_i.second, player->worn[selected_arm]);
                             player->worn[selected_arm] = nullptr;
                         }
                     }
