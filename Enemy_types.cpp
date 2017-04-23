@@ -11,6 +11,7 @@
     e->min_radius = 1;
     e->max_radius = 10;
     e->arm_name = "";
+    e->explosion_radius = 7;
 
     enemy_types.push_back(e);
 }
@@ -26,6 +27,7 @@
     e->min_radius = 1;
     e->max_radius = 10;
     e->arm_name = "Normal Arm";
+    e->explosion_radius = 7;
 
     enemy_types.push_back(e);
 }
@@ -42,6 +44,7 @@
     e->min_radius = 11;
     e->max_radius = 20;
     e->arm_name = "";
+    e->explosion_radius = 7;
 
     enemy_types.push_back(e);
 }
@@ -57,6 +60,7 @@
     e->min_radius = 11;
     e->max_radius = 20;
     e->arm_name = "Normal Arm";
+    e->explosion_radius = 7;
 
     enemy_types.push_back(e);
 }
@@ -72,6 +76,7 @@
     e->min_radius = 11;
     e->max_radius = 20;
     e->arm_name = "Weak Arm";
+    e->explosion_radius = 9;
 
     enemy_types.push_back(e);
 }
@@ -89,6 +94,7 @@
     e->min_radius = 21;
     e->max_radius = 30;
     e->arm_name = "Soldiers Arm";
+    e->explosion_radius = 9;
 
     enemy_types.push_back(e);
 }
@@ -104,6 +110,7 @@
     e->min_radius = 21;
     e->max_radius = 30;
     e->arm_name = "Weak Arm";
+    e->explosion_radius = 9;
 
     enemy_types.push_back(e);
 }
