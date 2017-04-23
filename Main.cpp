@@ -11,8 +11,8 @@
 
 void *__gxx_personality_v0;
 
-const int window[2] = {500,500}, map_size = 64;
-const int tile_size = 40;
+const int window[2] = {500,500}, map_size = 61;
+const int tile_size = 64;
 const int durability_drop = 1, weapon_durability_drop = 2, throw_durability_drop = 2, kick_damage=2, bomb_explode_time=4, bomb_explosion_radius=5;
 const float weapon_multiplier = 0.8;
 
@@ -29,6 +29,7 @@ class Character;
 Character* player;
 std::deque<Character*> enemies;
 class Object;
+Object* level_end;
 std::deque<Object*> objects, walls, to_delete;
 class Item;
 std::deque<Item*> items;
@@ -84,6 +85,16 @@ void death_screen()
     SDL_SetRenderDrawColor(renderer,255,0,0,255);
     SDL_RenderClear(renderer);
     SDL_RenderPresent(renderer);
+    SDL_Delay(500);
+}
+
+void win_screen()
+{
+    breakk = true;
+    SDL_SetRenderDrawColor(renderer,0,255,0,255);
+    SDL_RenderClear(renderer);
+    SDL_RenderPresent(renderer);
+    SDL_Delay(500);
 }
 
 class Arm
@@ -154,7 +165,7 @@ public:
 
 bool wall_or_void(int x, int y)
 {
-    if (x < 0 || x >= map_size || y < 0 || y >= map_size || darkness[x][y]) return true;
+    if (x < 0 || x >= map_size || y < 0 || y >= map_size || darkness[x][y] || (x == level_end->pos[0] && y == level_end->pos[1])) return true;
 
     for (Object* o: walls)
     {
@@ -296,6 +307,8 @@ public:
 
     virtual void ai()
     {
+        if (darkness[pos[0]][pos[1]]) return;
+
         int last_pos[2] = {pos[0],pos[1]};
 
         if (abs(player->pos[0]-pos[0]) >= abs(player->pos[1]-pos[1])) pos[0] += sign(player->pos[0]-pos[0]);
@@ -440,6 +453,7 @@ Enemy_type* start_monster;
 
 void generate_level(int tiles_to_generate)
 {
+    //Reset
     while (!walls.empty())
     {
         delete walls[0];
@@ -457,6 +471,7 @@ void generate_level(int tiles_to_generate)
         }
     }
 
+    //Walls
     int walker_pos[2] = {map_size/2,map_size/2}, start_monster_pos[2] = {map_size/2,map_size/2};
     int tiles=0;
 
@@ -505,6 +520,7 @@ void generate_level(int tiles_to_generate)
         }
     }
 
+    //Start monster
     Character* c = new Character(start_monster_pos[0],start_monster_pos[1],start_monster->tex,start_monster->blood,start_monster->explosion_radius);
     free_tiles[start_monster_pos[0]][start_monster_pos[1]] = false;
     if (start_monster->arms)
@@ -515,6 +531,20 @@ void generate_level(int tiles_to_generate)
         }
     }
 
+    //Exit
+    int pos[2], counter=0;
+    do
+    {
+        pos[0] = map_size/2+(random(0,1)?1:-1)*(map_size/2-random(1,5));
+        pos[1] = map_size/2+(random(0,1)?1:-1)*(map_size/2-random(1,5));
+        counter++;
+        if (counter>=3000) return generate_level(tiles_to_generate);
+    } while (!free_tiles[pos[0]][pos[1]]);
+
+    level_end = new Object(pos[0], pos[1], "Exit", true);
+
+
+    //Every other monster
     for (Enemy_type* e: enemy_types)
     {
         for (int u=1;u<=e->number;u++)
@@ -522,8 +552,21 @@ void generate_level(int tiles_to_generate)
             int pos[2], counter=0;
             do
             {
-                pos[0] = map_size/2+(random(0,1)?1:-1)*random(e->min_radius,e->max_radius);
-                pos[1] = map_size/2+(random(0,1)?1:-1)*random(e->min_radius,e->max_radius);
+                if (!random(0,2))
+                {
+                    pos[0] = map_size/2+(random(0,1)?1:-1)*random(e->min_radius,e->max_radius);
+                    pos[1] = map_size/2+(random(0,1)?1:-1)*random(e->min_radius,e->max_radius);
+                }
+                else if (random(0,1))
+                {
+                    pos[0] = map_size/2+(random(0,1)?1:-1)*random(e->min_radius,e->max_radius);
+                    pos[1] = map_size/2+random(-e->max_radius,e->max_radius);
+                }
+                else
+                {
+                    pos[0] = map_size/2+random(-e->max_radius,e->max_radius);
+                    pos[1] = map_size/2+(random(0,1)?1:-1)*random(e->min_radius,e->max_radius);
+                }
                 counter++;
                 if (counter>=3000) return generate_level(tiles_to_generate);
             } while (!free_tiles[pos[0]][pos[1]]);
@@ -561,16 +604,7 @@ void render_everything()
     std::sort(objects.begin(), objects.end(), sort_crit);
     for (Object* o: objects) o->render();
 
-    SDL_Rect r = {window[0]-20,window[1]-10,10,100*player->hp/50};
-    r.y -= r.h;
-    SDL_SetRenderDrawColor(renderer,255,0,0,255);
-    SDL_RenderFillRect(renderer,&r);
-    r.y += r.h;
-    r.h = 100;
-    r.y -= r.h;
     SDL_SetRenderDrawColor(renderer,0,0,0,255);
-    SDL_RenderDrawRect(renderer,&r);
-
     for (int i=0;i<=window[0]/tile_size+1;i++)
     {
         for (int u=0;u<=window[1]/tile_size+1;u++)
@@ -583,6 +617,16 @@ void render_everything()
             }
         }
     }
+
+    SDL_Rect r = {window[0]-20,window[1]-10,10,100*player->hp/50};
+    r.y -= r.h;
+    SDL_SetRenderDrawColor(renderer,255,0,0,255);
+    SDL_RenderFillRect(renderer,&r);
+    r.y += r.h;
+    r.h = 100;
+    r.y -= r.h;
+    SDL_SetRenderDrawColor(renderer,0,0,0,255);
+    SDL_RenderDrawRect(renderer,&r);
 
     SDL_RenderPresent(renderer);
 }
@@ -782,6 +826,12 @@ int main(int argc, char* args[])
                     {
                         player->pos[0] += di[0];
                         player->pos[1] += di[1];
+
+                        if (level_end->pos[0] == player->pos[0] && level_end->pos[1] == player->pos[1])
+                        {
+                            win_screen();
+                            break;
+                        }
 
 
                         if (wall_or_void(player->pos[0],player->pos[1]))
