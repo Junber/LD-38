@@ -1,2 +1,2 @@
 # LD-38
-A game for Ludum Dare 38 by lowercase games
+ARMageddon - An unfinished game for Ludum Dare 38 by lowercase games
